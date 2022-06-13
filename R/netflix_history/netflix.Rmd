@@ -1,0 +1,387 @@
+---
+title: "netflix_1"
+author: "Ali Mojabi"
+date: "12/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pacman)
+p_load(tidyverse, tidytext, lubridate, janitor)
+```
+
+It was a little over 2 years ago, now, when the United States first really started feeling the effecting the COVID 19 pandemic, and all the horrors that came along with it. Practically the entire world shut down for those first few months. Even as things, very slowly, began to open up, most people restricted their social contact with other for a long while after. Trapped at home with nothing to do, we turned to the streaming companies to rescue us. Netflix, among other streaming platforms, was our savior from going completely stir crazy. 
+
+Watching movies and TV shows is a favorite pastime of mine, so my TV time is already pretty high, but during and after the lock-downs, I have a feeling that it went up, even higher. In this post, I'd like to explore my Netflix viewing history, and also see if in fact, my screen time did go up, by how much, and whether the difference is statistically significant. I chose Netflix because of the ease by which they make the data available; we could have just as easily chosen any of the other various streaming companies.
+
+If you have a Netflix account, you can go here: https://www.netflix.com/settings/viewed/, to see and/or download your viewing history. The list goes all the way back to the account's creation, 2013 in my case. The downloaded CSV file will be named 'NetflixViewingHistory.csv'. Let's get started.
+
+ 
+
+
+
+### Reading in and wrangling the Data
+
+```{r}
+df <- read_csv("NetflixViewingHistory.csv", col_names = T) %>% clean_names()
+df %>% head()
+```
+
+Reading in and viewing the data, we see that there are only two columns, one for the 'Date', and one for the 'Title'. It's a good idea to do this right from the beginning, to get the variable names into a more standardized format. The *janitor* package's clean_names() function will help with this.
+
+
+We can see that the 'title' column contains a lot of information, including the show name, seasion, and episode. We'll want to extract these into separate columns. Before doing this, though, I think it'd be a good idea to rename the 'title' column to 'title_full'. The date feature, also, was imported as 'character', we'll want to address this as well. 
+
+
+```{r}
+df$date <- df$date %>%
+  mdy()
+
+df$title<- df$title %>%
+ tolower()
+
+df <- rename(df, title_full = title)
+
+df %>%
+  head()
+```
+
+
+
+The variable names and type look good. We can now go about splitting the title into its 3 constituent parts. This will include the shows title, the season, and the episode name.  The separate() function from the *tidyr* package makes this very easy.
+
+```{r}
+df <- df %>%
+  separate(col = title_full, into = c("title", "season", "episode"), sep = ": ", remove = F)
+
+df %>%
+  head()
+```
+
+### Exploratory Analysis
+
+Lets see the size of our dataframe. This will essentially give us the number of total episodes I've watched, since 2013.
+
+```{r}
+dim(df)
+
+```
+Wow! There are over 5900 observations! That is a lot of TV. In my defense, I often leave Netflix playing on the TV as a sort of background noise.
+
+Moving on, lets see how many unique titles there are in the list.
+
+```{r}
+df %>%
+  select(title) %>%
+  unique() %>% count()
+```
+
+
+There are 800 unique . This is not counting seasons or episodes, but only different titles of serials and movies.
+
+
+I'd like to see how many different naming conventions there are for the "season" variable. Not all go by the "season" naming convention. Some say "chapter," or "book," or "part", etc.
+
+```{r}
+df$season %>% unique() %>%
+  head(10)
+
+df %>% select(season) %>%
+  unique() %>% count()
+```
+
+We can see some of the different name types here, and that there are actually 205 different types in our dataset.
+
+
+
+
+Even though there are so many, in some instances, it may be easier to work with if we change it into a categorical -- or factor variable. 
+
+
+```{r}
+df$ftitle <- factor(df$title)
+
+df %>% head()
+```
+
+Lets take a look at my top 5 shows, by number of episodes watched. We'll do this by first grouping by the title, then taking the slice_max().
+
+
+```{r}
+df %>%
+  group_by(ftitle) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  slice_max(order_by = n, n = 5) %>%
+  kable(align = "c", col.names = c('Title', "No. of Episodes"))
+```
+
+Looking at at the list, it makes sense. All the shows listed, including The Office, House, and New Girl were on air for multiple seasons, on network television, which means they likely had 15+ episodes per season. That not to mention that The Office and House are classics; I've re-watched these multiple times.
+
+
+```{r}
+df %>%
+  group_by(episode) %>%
+  count() %>%
+  arrange(desc(n))
+```
+
+
+Lets plotting our top 10 shows, by number of episodes watched, we'll use ggplot(), obviously, and a little trick I use to get them in descending order, using the $reorder()$ function from the stats package
+
+```{r}
+library(ggthemes)
+# df %>%
+#   group_by(ftitle) %>%
+#   tally() %>%
+#   top_n(10, n) %>%
+#   arrange(desc(n)) %>%
+#   ggplot() +
+#   geom_col(aes(y = ftitle, x = n, fill = ftitle))
+
+
+
+df %>%
+  group_by(title) %>%
+  tally() %>%
+  top_n(10) %>%
+  ggplot() +
+  geom_col(aes(y = reorder(title, n),x = n, col = title)) +
+  xlab("No. of Episodes Watched") +
+  ylab("Streaming Title") +
+  ggtitle("Top 10 Shows by Episodes Watched") +
+  theme_fivethirtyeight() +
+  theme(legend.position = "none")
+
+#the second one looks a little better, being ordered
+```
+
+
+We can check the days where we watched the most shows, then we can plot the graph of the number of episodes watched per day, and see if we can see any trends. I'll filter the plot so we're looking at the 2 years before and after the beginning of COVID, which came to the US in around March 2020. This was not when people first started talking about it, which was around December 2019, but when we really started to feel it, and pay attention. 
+
+```{r}
+df %>%
+  group_by(date) %>%
+  tally() %>%
+  arrange(desc(n))
+```
+
+We have a few different options for this plot. With so many observations, a column plot will let us see the individual days, and how many episodes were watched, but the smoothed graph will allow for easier pattern recognition.
+Lets plot the 
+
+```{r}
+
+df %>%
+  group_by(date) %>%
+  filter(date > '2018-01-01') %>%
+  tally() %>%
+  ggplot(aes(x = date, y = n))+
+  geom_smooth(col = "blue") +
+  theme_fivethirtyeight() +
+  ggtitle("Number of Episodes by Day")
+
+
+
+df %>%
+  group_by(date) %>%
+  filter(date > '2018-01-01') %>%
+  tally() %>%
+  ggplot(aes(x = date, y = n))+
+  geom_smooth(col = "blue") +
+  theme_fivethirtyeight() +
+  ggtitle("Number of Episodes by Day")
+
+
+```
+
+
+
+
+```{r}
+df %>%
+  filter(date == '2022-04-22')
+```
+
+
+
+
+```{r}
+library(devtools)
+#install_github("rstudio/d3heatmap")
+p_load(heatmaply, pheatmap, RColorBrewer)
+df %>% head()
+```
+
+
+
+I'd like to see a heatmap of our viewing habits, by day and month. we'll need to create a few new columns in order to get this data.
+
+```{r}
+# month(df$date)
+# weekdays(df$date)
+# day(df$date)
+# year(df$date)
+df$year <- year(df$date)
+df$month <- month(df$date)
+df$day <- day(df$date)
+df$dow <- weekdays(df$date)
+
+df %>% head()
+```
+
+```{r}
+df %>%
+  group_by(date) %>%
+  tally() %>%
+  arrange(date) %>%
+  ggplot(aes(x = date, y = n)) +
+  geom_line()
+
+
+```
+
+
+
+
+```{r}
+library(heatmaply)
+heatmaply(df)
+```
+
+
+```{r}
+df
+```
+
+
+
+```{r}
+df %>%
+  group_by(day, month, year) %>%
+  count(day) %>%
+  ggplot() +
+  geom_point(aes(x = day, y = n)) +
+  facet_wrap(~ year)
+
+df %>%
+  filter(year > 2015) %>%
+  group_by(dow, month, year) %>%
+  count(dow) %>%
+  ggplot() +
+  geom_point(aes(x = dow, y = n)) +
+  facet_wrap(~ year)
+
+```
+
+
+
+```{r}
+df %>%
+  filter(year > 2015) %>% 
+  group_by(month, year) %>%
+  count(month) %>%
+  ggplot(aes(x = month, y = n)) +
+  geom_point() +
+  facet_wrap(~year) # keep this one, for the article. Shows perfect trend for when we were in school
+```
+
+
+We can see some trends in some of the months. School always started in September and January, and finals were in May and December. You can see some pretty clear sign of when i had to really buckle down and study, which translated to fewer watching hours of Netflix.
+
+
+Can we do a test to see if our viewing after covid was more or less. We can means for each of the months, then 
+
+
+If we want to take the average shows we watched per day, we have to take an average of the whole year. Otherwise, with the number of dates that we actually wached something, that would be number of episode per "session".
+
+
+
+
+```{r}
+df %>% head()
+df_2016 <- df %>% 
+  filter(date >= "2016-01-01" & date < "2017-01-01")
+
+
+df_2016 %>%
+  select(date) %>%
+  unique() %>%
+  count()
+
+zz <- paste("test", a[1])
+
+paste("20", "16", "-01-01", sep = "")
+
+
+zz <- array()
+
+for(i in 2016:2022){
+  a <- paste(i, "-01-01", sep = "")
+  b <- paste(i + 1, "-01-01", sep = "")
+  temp_1 <- df %>%
+    filter(date >= a & date < b) %>%
+    summarise(n()/365) %>%
+    as.numeric()
+  zz <- append(zz, temp_1, after = length(zz))
+}
+
+zz
+
+# temp_1 <- df %>%
+#   filter(date >= "2016-01-01" & date <= "2017-01-01") %>%
+#   summarise(n()/365) %>% as.numeric()
+# 
+# zz <- append(zz, temp_1, after = length(zz))
+
+```
+
+
+
+
+it order to see the number of average episodes per session, we will need to find the total number of episodes we watched, divided by the number of days where something was watched, we could count unique() occurrences of each of the dates and see how many there are:
+
+
+
+```{r}
+days_watched <- df %>% filter(date >= "2021-01-01" & date <= "2022-01-01") %>%
+  summarise(unique(date)) %>%
+  tally() %>% as.numeric()
+
+episodes <- df %>% filter(date >= "2021-01-01" & date <= "2022-01-01") %>%
+  count() %>% as.numeric()
+
+avg_episodes <- episodes/days_watched
+
+avg_episodes
+
+
+
+```
+
+
+
+
+
+
+what we can do is a hypothesis test, in order to see whether the number of episodes watched before COVID was more, less, or the same as during and after COVID. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
